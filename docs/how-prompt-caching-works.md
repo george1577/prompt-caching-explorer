@@ -617,6 +617,42 @@ timestamp example); requests spaced further apart than the TTL; one-off requests
 3. **The ×4 system prompt** with a breakpoint → one write, then cheap reads. Change the model to Sonnet to
    see the reads get an even bigger discount (0.05×).
 
+### Why would a provider give a discount?
+
+A fair question: providers charge per token, so wouldn't they *want* you to send as many tokens as
+possible? It looks that way, but providers don't really sell tokens. They sell **GPU time**, and tokens
+are just how they bill for it. (What follows is reasoning about the economics; providers don't publish
+their margins.)
+
+1. **Re-reading the same prefix costs the provider real money.** Every input token means GPU work: the
+   prefill from tab ③. Send a 10,000-token system prompt 100 times and they do that work 100 times. With
+   caching they do it once, and after that the work is mostly fetching saved KV data, which is far cheaper
+   than recomputing it. A cache read is billed at 0.1× the normal price, but their cost probably drops by a
+   similar or larger factor. They earn less per request, but not necessarily less **profit** per request.
+2. **GPUs are the bottleneck, not demand.** Providers are short of capacity. Every GPU-second not spent
+   re-reading your unchanged prompt can serve another paying request. Caching gets them **more revenue
+   from the same hardware**: they're not losing money, they're freeing up capacity.
+3. **Cheaper tokens make people use more of them.** Many of today's biggest uses only pay off because of
+   caching:
+   - coding assistants that resend a whole codebase on every turn;
+   - agents that resend a growing conversation history 50 times in one task;
+   - chatbots with long instructions or a product manual attached.
+
+   Without caching, a lot of these would be too expensive or too slow to build. With it, people build them
+   and send far *more* total tokens. Cutting the price of each token grows the overall market.
+4. **The pricing protects them.**
+   - **Cache writes cost extra** (1.25× or 2×), which covers the memory needed to hold your KV data.
+   - **The TTL** (5 minutes or 1 hour) means they only hold memory for prefixes that are actually being reused.
+   - **The minimum length** (512+ tokens) means they don't bother with tiny prefixes that aren't worth storing.
+
+   That's why the worked example above showed the first request costing *more* than an uncached one.
+5. **Competition.** Prefix caching is a well-known technique that open-source servers like vLLM already
+   include. Any provider that refused to pass on the savings would be undercut by one that did. Lower
+   latency also matters: a faster first word is a better product.
+
+> **In short:** the business is selling useful work per GPU, not as many tokens as possible. Caching gets
+> more useful work out of each GPU, which is why every major provider offers it.
+
 ---
 
 ## 7. What about OpenAI?
